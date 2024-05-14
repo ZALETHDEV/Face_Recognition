@@ -24,7 +24,7 @@ face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_fronta
 # Función para cargar el modelo de reconocimiento facial
 def cargar_modelo():
     modelo = cv2.face.LBPHFaceRecognizer_create()
-    modelo_path = 'C:\\xampp\\htdocs\\Face_Recognition\\microservicio\\modelos\\lbph_modelo.yml'
+    modelo_path = 'modelos/lbph_modelo.yml'
 
     # Verificar si el archivo existe
     if not os.path.exists(modelo_path):

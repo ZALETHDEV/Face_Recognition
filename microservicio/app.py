@@ -44,7 +44,6 @@ def cargar_modelo():
     
     return modelo
 
-# Función para entrenar el modelo de reconocimiento facial
 def entrenar_modelo():
     rostros = []
     labels = []
@@ -53,18 +52,32 @@ def entrenar_modelo():
         for file in files:
             if file.endswith("jpg") or file.endswith("png"):
                 path = os.path.join(root, file)
-                label = int(file.split("_")[0])  # Extraer la etiqueta del nombre del archivo
-                imagen = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-                rostros.append(imagen)
-                labels.append(label)
+                try:
+                    label = int(file.split("_")[0])  # Extraer la etiqueta del nombre del archivo
+                    imagen = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+                    if imagen is not None:
+                        rostros.append(imagen)
+                        labels.append(label)
+                    else:
+                        print(f"Advertencia: No se pudo leer la imagen {path}")
+                except ValueError:
+                    print(f"Advertencia: No se pudo extraer una etiqueta válida del nombre del archivo {file}")
+                except Exception as e:
+                    print(f"Error inesperado con el archivo {file}: {e}")
 
     if len(rostros) > 0 and len(labels) > 0:
+        print(f"Entrenando modelo con {len(rostros)} rostros y {len(labels)} etiquetas...")
         modelo = cv2.face.LBPHFaceRecognizer_create()
         modelo.train(rostros, np.array(labels))
-        modelo_path = 'C:\\xampp\\htdocs\\Face_Recognition\\microservicio\\modelos\\lbph_modelo.yml'
+        modelo_path = 'modelos/lbph_modelo.yml'
+        if not os.path.exists('modelos'):
+            os.makedirs('modelos')
         modelo.save(modelo_path)
+        print(f"Modelo guardado en {modelo_path}")
     else:
         raise ValueError("No se encontraron rostros o etiquetas para entrenar el modelo")
+
+
 
 # Función para guardar información del rostro en la base de datos y en el sistema de archivos
 @app.route('/guardar_rostro', methods=['POST'])
@@ -74,94 +87,76 @@ def guardar_rostro():
         nombre = data.get('nombre')
         imagen_base64 = data.get('imagen')
 
-        # Validar si nombre e imagen están presentes en la solicitud
         if not nombre or not imagen_base64:
             return jsonify({'error': 'Nombre e imagen son campos requeridos'}), 400
 
-        # Validar si la imagen base64 comienza con 'data:image/jpeg;base64,'
         if imagen_base64.startswith('data:image/jpeg;base64,'):
-            # Si comienza con 'data:image/jpeg;base64,', extraer solo los datos base64
             imagen_base64 = imagen_base64.split('base64,')[1]
 
-        # Convertir imagen base64 a matriz OpenCV
         nparr = np.frombuffer(base64.b64decode(imagen_base64), np.uint8)
-        
-        # Decodificar la imagen y convertirla a escala de grises
         imagen = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-        # Validar si la imagen se decodificó correctamente
         if imagen is None:
             return jsonify({'error': 'No se pudo decodificar la imagen'}), 400
 
         gray = cv2.cvtColor(imagen, cv2.COLOR_BGR2GRAY)
-
-        # Aplicar un ajuste de contraste a la imagen
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
         gray = clahe.apply(gray)
 
-        # Detectar rostros en la imagen con parámetros ajustables
         rostros_detectados = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
 
-        # Comprobar si se detectaron rostros
         if len(rostros_detectados) == 0:
             return jsonify({'error': 'No se detectaron rostros en la imagen'}), 400
 
-        # Crear una conexión a la base de datos y un cursor
         with mysql.connector.connect(**db_config) as db_connection:
             cursor = db_connection.cursor()
-
-            # Iniciar una transacción
             db_connection.start_transaction()
 
-            # Insertar información del rostro en la base de datos
             sql_insert = "INSERT INTO rostros (nombre, imagen_base64) VALUES (%s, %s)"
             cursor.execute(sql_insert, (nombre, imagen_base64))
-
-            # Obtener el ID del rostro insertado
             rostro_id = cursor.lastrowid
 
-            # Guardar cada rostro detectado en el sistema de archivos
             if not os.path.exists(ROSTROS_DIR):
                 os.makedirs(ROSTROS_DIR)
 
             for i, (x, y, w, h) in enumerate(rostros_detectados):
                 rostro = gray[y:y+h, x:x+w]
-                cv2.imwrite(os.path.join(ROSTROS_DIR, f'{rostro_id}_{i}.jpg'), rostro)
+                rostro_path = os.path.join(ROSTROS_DIR, f'{rostro_id}_{i}.jpg')
+                cv2.imwrite(rostro_path, rostro)
+                print(f"Rostro guardado en {rostro_path}")
 
-            # Confirmar la transacción
             db_connection.commit()
 
-        # Entrenar el modelo después de guardar el nuevo rostro
         entrenar_modelo()
 
         return jsonify({'message': 'Rostro guardado y modelo entrenado correctamente'}), 200
-
-    except ValueError:
-        return jsonify({'error': 'La imagen proporcionada no es válida'}), 400
 
     except mysql.connector.Error as db_error:
         return jsonify({'error': f'Error en la base de datos: {db_error}'}), 500
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+ 
 
 def reconocer_rostro_modelo_entrenado(imagen):
     gray = cv2.cvtColor(imagen, cv2.COLOR_BGR2GRAY)
     modelo = cargar_modelo()
-    # Realizar la predicción
-    id_, confianza = modelo.predict(gray)
-    # Calcular el porcentaje de confianza
-    porcentaje_confianza = int((1 - (confianza / 400)) * 100)
-    
-    # Consultar el nombre asociado al ID reconocido en la base de datos
-    nombre_reconocido = consultar_nombre_por_id(id_)
-    
-    # Verificar si el porcentaje de confianza es superior a 90
-    if porcentaje_confianza > 85:
-        return nombre_reconocido
-    else:
-        return "Persona no reconocida"
 
+    rostros_detectados = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+    resultados = []
+
+    for (x, y, w, h) in rostros_detectados:
+        rostro = gray[y:y+h, x:x+w]
+        id_, confianza = modelo.predict(rostro)
+        porcentaje_confianza = int((1 - (confianza / 400)) * 100)
+        nombre_reconocido = consultar_nombre_por_id(id_)
+        print(id_)
+        if porcentaje_confianza > 85:
+            resultados.append((nombre_reconocido, porcentaje_confianza, id_))
+        else:
+            resultados.append(("Persona no reconocida", porcentaje_confianza, id_))
+
+    return resultados
 def consultar_nombre_por_id(id_):
     # Establecer conexión a la base de datos y realizar la consulta
     try:

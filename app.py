@@ -9,10 +9,10 @@ app = Flask(__name__)
 
 # Configuración de la conexión a la base de datos
 db_config = {
-    'host': 'viaduct.proxy.rlwy.net',
+    'host': 'roundhouse.proxy.rlwy.net',
     'user': 'root',
-    'port': '48267',
-    'password': 'lgjTfyjneFCFATgIwnVLnhtGOvUlQfwB',
+    'port': '37260',
+    'password': 'gPDoBzvKCUPBajeXduFsoQzUXVgVcYHf',
     'database': 'railway'
 }
 

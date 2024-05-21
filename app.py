@@ -9,10 +9,11 @@ app = Flask(__name__)
 
 # Configuración de la conexión a la base de datos
 db_config = {
-    'host': 'localhost',
+    'host': 'viaduct.proxy.rlwy.net',
     'user': 'root',
-    'password': '',
-    'database': 'facial_recognition'
+    'port': '48267',
+    'password': 'lgjTfyjneFCFATgIwnVLnhtGOvUlQfwB',
+    'database': 'railway'
 }
 
 # Directorio donde se almacenarán los rostros
